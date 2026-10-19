@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>團購點餐與收費系統 V6</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- SheetJS for Excel export -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    body {
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    .tab-active {
+      border-bottom: 3px solid #3b82f6;
+      color: #1d4ed8;
+      font-weight: 600;
+    }
+    input[type="time"], input[type="date"] {
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800 pb-12">
+
+  <!-- Main Container -->
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+
+    <!-- Toast Notification Box -->
+    <div id="toast" class="fixed bottom-5 right-5 z-50 transform transition-all duration-300 translate-y-20 opacity-0 bg-slate-900 text-white px-5 py-3 rounded-xl shadow-xl flex items-center space-x-3 pointer-events-none">
+      <i id="toast-icon" class="fas fa-info-circle text-blue-400"></i>
+      <span id="toast-msg" class="text-sm font-medium">訊息提醒</span>
+    </div>
+
+    <!-- Red Deadline Warning Banner (<10 mins) -->
+    <div id="deadline-banner" class="hidden mb-4 bg-red-600 text-white px-4 py-3 rounded-xl shadow-md flex items-center justify-between animate-pulse">
+      <div class="flex items-center space-x-2">
+        <i class="fas fa-exclamation-triangle text-xl"></i>
+        <span class="font-bold text-sm sm:text-base">注意：點餐截止時間剩餘不足 10 分鐘！請儘速提交或修改餐點！</span>
+      </div>
+      <span id="banner-timer" class="font-mono text-lg font-extrabold bg-red-800 px-3 py-1 rounded-lg">10:00</span>
+    </div>
+
+    <!-- System Header Block -->
+    <header class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 mb-6">
+      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        
+        <!-- App Title & Identity -->
+        <div class="flex items-center space-x-3">
+          <div class="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center text-white text-2xl shadow-md shadow-blue-500/20">
+            <i class="fas fa-utensils"></i>
+          </div>
+          <div>
+            <h1 class="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">團購點餐與收費系統</h1>
+            <p class="text-xs text-slate-500 flex items-center space-x-2 mt-0.5">
+              <span>規章規範 V6 完整版</span>
+              <span>•</span>
+              <span id="role-badge" class="bg-slate-100 text-slate-700 font-semibold px-2 py-0.5 rounded text-[11px]">一般檢視/全覽模式</span>
+            </p>
+          </div>
+        </div>
+
+        <!-- Header Controls & Date / Deadline Info -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 lg:flex lg:items-center gap-3 text-xs sm:text-sm">
+          
+          <!-- Order Date Selection -->
+          <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-200 flex flex-col justify-center">
+            <span class="text-slate-400 text-[10px] font-medium uppercase tracking-wider">訂購日期</span>
+            <input type="date" id="order-date" class="bg-transparent font-semibold text-slate-700 outline-none cursor-pointer">
+          </div>
+
+          <!-- Deadline Setting -->
+          <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-200 flex flex-col justify-center">
+            <span class="text-slate-400 text-[10px] font-medium uppercase tracking-wider">截止時間</span>
+            <input type="time" id="deadline-time" class="bg-transparent font-semibold text-slate-700 outline-none cursor-pointer">
+          </div>
+
+          <!-- Countdown Timer Display Box -->
+          <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-200 flex flex-col justify-center min-w-[140px]">
+            <span class="text-slate-400 text-[10px] font-medium uppercase tracking-wider">倒數時間</span>
+            <span id="countdown-display" class="font-mono font-bold text-slate-700 text-sm">--:--:--</span>
+          </div>
+
+          <!-- Quick Action Buttons -->
+          <div class="flex items-center space-x-2">
+            <!-- Menu URL Button -->
+            <button id="btn-menu-url" onclick="openMenuUrl()" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-3 py-2.5 rounded-xl font-medium transition flex items-center justify-center space-x-1.5">
+              <i class="fas fa-book-open"></i>
+              <span>菜單</span>
+            </button>
+
+            <!-- Admin Login Button -->
+            <button onclick="toggleAdminModal()" class="bg-slate-800 hover:bg-slate-700 text-white font-medium px-3.5 py-2.5 rounded-xl transition flex items-center space-x-1.5">
+              <i class="fas fa-user-gear"></i>
+              <span id="admin-btn-text">管理者登入</span>
+            </button>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- Secondary Token Bar -->
+      <div class="mt-4 pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+        <div class="flex items-center space-x-2 w-full sm:w-auto">
+          <label for="member-token-select" class="font-semibold text-slate-600 whitespace-nowrap">模擬個人連結 (Token):</label>
+          <select id="member-token-select" onchange="switchMemberToken(this.value)" class="bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-64">
+            <option value="">-- 公用/全覽模式 (檢視全部) --</option>
+          </select>
+        </div>
+        <span id="token-status-tip" class="text-slate-400 text-[11px]">提示：選擇個人 Token 後，表格將僅開放該成員欄位編輯。</span>
+      </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <div class="flex border-b border-slate-200 mb-6 bg-white rounded-t-2xl px-4 pt-2 shadow-sm">
+      <button onclick="switchTab(1)" id="tab-btn-1" class="px-5 py-3 text-sm font-medium text-slate-500 hover:text-slate-800 transition flex items-center space-x-2 tab-active">
+        <i class="fas fa-edit"></i>
+        <span>頁籤一：餐點填寫區</span>
+      </button>
+      <button onclick="switchTab(2)" id="tab-btn-2" class="px-5 py-3 text-sm font-medium text-slate-500 hover:text-slate-800 transition flex items-center space-x-2">
+        <i class="fas fa-list-check"></i>
+        <span>頁籤二：店家訂單彙整</span>
+      </button>
+      <button onclick="switchTab(3)" id="tab-btn-3" class="px-5 py-3 text-sm font-medium text-slate-500 hover:text-slate-800 transition flex items-center space-x-2">
+        <i class="fas fa-calculator"></i>
+        <span>頁籤三：付款與對帳</span>
+      </button>
+    </div>
+
+    <!-- TAB 1: Order Entry Section -->
+    <main id="tab-1" class="tab-content">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-5">
+          <div>
+            <h2 class="text-lg font-bold text-slate-900">個別團員點餐清單 (1~16號)</h2>
+            <p class="text-xs text-slate-500 mt-0.5">系統已預載 1 至 16 號成員。點餐截止前均可輸入或調整。</p>
+          </div>
+          <div class="flex items-center space-x-2 w-full sm:w-auto">
+            <button onclick="clearAllOrdersConfirm()" class="admin-only hidden text-xs bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 px-3 py-2 rounded-lg font-medium transition">
+              <i class="fas fa-trash-alt mr-1"></i> 清空當日點餐
+            </button>
+          </div>
+        </div>
+
+        <!-- Order Table -->
+        <div class="overflow-x-auto rounded-xl border border-slate-200">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-slate-100 text-slate-600 font-semibold uppercase text-xs">
+              <tr>
+                <th class="p-3 w-16 text-center">座號</th>
+                <th class="p-3 w-36">姓名</th>
+                <th class="p-3">訂購品項 (餐點細項)</th>
+                <th class="p-3 w-40">備註 (甜度/冰量)</th>
+                <th class="p-3 w-32 text-right">金額 ($)</th>
+              </tr>
+            </thead>
+            <tbody id="order-table-body" class="divide-y divide-slate-100">
+              <!-- Rows 1-16 injected dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+
+    <!-- TAB 2: Order Summary & Aggregation Section -->
+    <main id="tab-2" class="tab-content hidden">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+          <div>
+            <h2 class="text-lg font-bold text-slate-900">店家訂單彙整表 (自動歸類)</h2>
+            <p class="text-xs text-slate-500">只要品項、備註或金額有任一填寫即會納入。若有缺漏將自動反灰提示。</p>
+          </div>
+          <div class="flex items-center space-x-2">
+            <button onclick="copyAggregationsText()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-sm transition flex items-center space-x-1.5">
+              <i class="fas fa-copy"></i>
+              <span>一鍵複製電話報餐文字</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Summary Table -->
+        <div class="overflow-x-auto rounded-xl border border-slate-200 mb-6">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-slate-100 text-slate-600 font-semibold uppercase text-xs">
+              <tr>
+                <th class="p-3 w-24 text-center">座號</th>
+                <th class="p-3">品項名稱</th>
+                <th class="p-3">客製備註 / 規格</th>
+                <th class="p-3 text-center w-28">總數量</th>
+                <th class="p-3 text-right w-36">合小計 (引用金額)</th>
+              </tr>
+            </thead>
+            <tbody id="summary-table-body" class="divide-y divide-slate-100">
+              <!-- Summary rows injected via JS -->
+            </tbody>
+            <tfoot class="bg-slate-50 font-bold text-slate-800">
+              <tr>
+                <td colspan="3" class="p-3 text-right">餐點總計：</td>
+                <td id="summary-total-qty" class="p-3 text-center text-blue-600">0</td>
+                <td id="summary-total-amount" class="p-3 text-right text-blue-600">$0</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <!-- Quick Preview Textbox -->
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">電話 / LINE 報餐複製預覽：</label>
+          <textarea id="summary-text-preview" readonly class="w-full h-32 bg-white border border-slate-200 rounded-lg p-3 text-xs font-mono text-slate-700 outline-none resize-none"></textarea>
+        </div>
+      </div>
+    </main>
+
+    <!-- TAB 3: Payment & Reconciliation Section -->
+    <main id="tab-3" class="tab-content hidden">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- Left 2 Cols: Individual Payment Table & Split Calculations -->
+        <div class="lg:col-span-2 space-y-6">
+          <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
+            <div class="flex justify-between items-center mb-4">
+              <h2 class="text-lg font-bold text-slate-900">對帳與付款狀態表</h2>
+              <span class="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full font-medium">包含平攤費用計算</span>
+            </div>
+
+            <!-- Reconciliation Table -->
+            <div class="overflow-x-auto rounded-xl border border-slate-200">
+              <table class="w-full text-left text-sm">
+                <thead class="bg-slate-100 text-slate-600 font-semibold uppercase text-xs">
+                  <tr>
+                    <th class="p-3 w-16 text-center">座號</th>
+                    <th class="p-3 w-28">姓名</th>
+                    <th class="p-3 text-right">餐點原價</th>
+                    <th class="p-3 text-right">平攤折扣/運費</th>
+                    <th class="p-3 text-right font-bold text-blue-600">應付金額</th>
+                    <th class="p-3 text-center">付款狀態 (管理者勾選)</th>
+                  </tr>
+                </thead>
+                <tbody id="payment-table-body" class="divide-y divide-slate-100">
+                  <!-- Payment rows injected dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right 1 Col: Overall Financial Settings & Summary -->
+        <div class="space-y-6">
+          <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
+            <h3 class="text-base font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100">整單費用與平攤設定</h3>
+            
+            <div class="space-y-4 text-xs sm:text-sm">
+              <!-- Total Original Sum -->
+              <div class="flex justify-between items-center">
+                <span class="text-slate-500">餐點原價合計：</span>
+                <span id="calc-subtotal" class="font-bold text-slate-800">$0</span>
+              </div>
+
+              <!-- Extra Delivery Fee Input -->
+              <div class="flex justify-between items-center">
+                <label class="text-slate-600 font-medium">外送費 / 服務費：</label>
+                <div class="w-28 relative">
+                  <span class="absolute left-2.5 top-2 text-slate-400">$</span>
+                  <input type="number" id="fee-delivery" value="0" min="0" oninput="calculateReconciliation()" class="w-full pl-6 pr-2 py-1.5 border border-slate-200 rounded-lg text-right font-medium focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+              </div>
+
+              <!-- Discount Input -->
+              <div class="flex justify-between items-center">
+                <label class="text-slate-600 font-medium">整單折扣 / 折價券：</label>
+                <div class="w-28 relative">
+                  <span class="absolute left-2.5 top-2 text-slate-400">-$</span>
+                  <input type="number" id="fee-discount" value="0" min="0" oninput="calculateReconciliation()" class="w-full pl-7 pr-2 py-1.5 border border-slate-200 rounded-lg text-right font-medium text-emerald-600 focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+              </div>
+
+              <!-- Split Mode Dropdown -->
+              <div class="pt-2 border-t border-slate-100">
+                <label class="block text-xs font-semibold text-slate-500 mb-1.5">平攤模式 (折扣與運費)：</label>
+                <select id="split-mode" onchange="calculateReconciliation()" class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 font-medium text-slate-700 outline-none">
+                  <option value="proportional">按金額比例平攤 (建議)</option>
+                  <option value="headcount">按有點餐人數均攤</option>
+                  <option value="organizer">主辦人吸收額外費用</option>
+                </select>
+              </div>
+
+              <!-- Total Final Collection -->
+              <div class="pt-4 border-t border-slate-200 flex justify-between items-baseline">
+                <span class="text-slate-900 font-bold">實收總金額：</span>
+                <span id="calc-grand-total" class="text-xl font-extrabold text-blue-600">$0</span>
+              </div>
+
+              <!-- Uncollected Surplus / Shortage ($1 rounding compensation badge) -->
+              <div id="rounding-note" class="text-[11px] text-slate-400 bg-slate-50 p-2.5 rounded-lg border border-slate-200 space-y-1">
+                <div class="flex items-center justify-between">
+                  <span>四捨五入微調補償：</span>
+                  <span id="rounding-diff" class="font-mono font-semibold text-slate-600">$0</span>
+                </div>
+                <p class="text-[10px] text-slate-400">若有四捨五入誤差，由主辦人損益補償 $1。</p>
+              </div>
+
+              <!-- CSV/Excel Export Action -->
+              <div class="pt-2">
+                <button onclick="exportToExcel()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-xl shadow-sm transition flex items-center justify-center space-x-2">
+                  <i class="fas fa-file-excel"></i>
+                  <span>匯出對帳報表 (Excel / CSV)</span>
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </main>
+
+  </div>
+
+  <!-- Admin Password Verification Modal -->
+  <div id="admin-auth-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+    <div class="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-md p-6 m-4 animate-scale-in">
+      <div class="text-center mb-5">
+        <div class="w-12 h-12 bg-slate-900 text-white rounded-full flex items-center justify-center mx-auto mb-3 text-xl">
+          <i class="fas fa-lock"></i>
+        </div>
+        <h3 class="text-lg font-bold text-slate-900">主辦人身份驗證</h3>
+        <p class="text-xs text-slate-500 mt-1">請輸入管理密碼以切換至主辦人權限</p>
+      </div>
+      
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">管理密碼 (預設: admin)</label>
+          <input type="password" id="admin-pass-input" placeholder="請輸入密碼" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+          <p id="admin-auth-error" class="text-xs text-red-500 mt-1 hidden">密碼錯誤，請重新輸入！</p>
+        </div>
+
+        <div class="flex items-center space-x-3 pt-2">
+          <button onclick="closeAdminAuthModal()" class="w-1/2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium py-2.5 rounded-xl transition text-sm">取消</button>
+          <button onclick="verifyAdminPassword()" class="w-1/2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-xl transition text-sm">確認驗證</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JavaScript Logic -->
+  <script>
+    let currentRole = 'user';
+    let currentSelectedTokenSeat = null;
+    let timerInterval = null;
+    let systemDate = getTodayString();
+
+    const DEFAULT_ADMIN_PASS = 'admin';
+    const DEFAULT_MENU_URL = 'https://www.google.com';
+
+    let currentData = {
+      menuUrl: DEFAULT_MENU_URL,
+      adminPass: DEFAULT_ADMIN_PASS,
+      deadlineTime: '11:30',
+      deliveryFee: 0,
+      discount: 0,
+      splitMode: 'proportional',
+      members: []
+    };
+
+    window.onload = function() {
+      const dateInput = document.getElementById('order-date');
+      dateInput.value = systemDate;
+      dateInput.addEventListener('change', (e) => {
+        systemDate = e.target.value;
+        loadDataForDate(systemDate);
+      });
+
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('admin') === 'true') {
+        openAdminAuthModal();
+      }
+
+      loadDataForDate(systemDate);
+
+      document.getElementById('deadline-time').addEventListener('change', (e) => {
+        currentData.deadlineTime = e.target.value;
+        saveDataForDate();
+        startTimer();
+      });
+
+      startTimer();
+    };
+
+    function getTodayString() {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    function generateDefaultMembers() {
+      const defaultNames = [
+        "陳小明", "林美華", "張志豪", "王雅婷", 
+        "李宗翰", "吳淑芬", "劉冠宇", "蔡宜君", 
+        "楊家豪", "黃怡君", "趙國棟", "周佩珊", 
+        "徐建國", "許雅琪", "郭俊傑", "鄭秀英"
+      ];
+      const members = [];
+      for (let i = 1; i <= 16; i++) {
+        members.push({
+          seat: i,
+          name: defaultNames[i - 1],
+          item: '',
+          price: 0,
+          note: '',
+          paid: false
+        });
+      }
+      return members;
+    }
+
+    function loadDataForDate(dateStr) {
+      const key = `meal_order_v6_${dateStr}`;
+      const raw = localStorage.getItem(key);
+
+      if (raw) {
+        try {
+          currentData = JSON.parse(raw);
+          if (!currentData.members || currentData.members.length === 0) {
+            currentData.members = generateDefaultMembers();
+          }
+        } catch(e) {
+          currentData.members = generateDefaultMembers();
+        }
+      } else {
+        currentData = {
+          menuUrl: DEFAULT_MENU_URL,
+          adminPass: DEFAULT_ADMIN_PASS,
+          deadlineTime: '11:30',
+          deliveryFee: 0,
+          discount: 0,
+          splitMode: 'proportional',
+          members: generateDefaultMembers()
+        };
+        saveDataForDate();
+      }
+
+      document.getElementById('deadline-time').value = currentData.deadlineTime || '11:30';
+      document.getElementById('fee-delivery').value = currentData.deliveryFee || 0;
+      document.getElementById('fee-discount').value = currentData.discount || 0;
+      document.getElementById('split-mode').value = currentData.splitMode || 'proportional';
+
+      initTokenSelectDropdown();
+      renderOrderTable();
+      renderSummaryTable();
+      calculateReconciliation();
+      startTimer();
+    }
+
+    function saveDataForDate() {
+      const key = `meal_order_v6_${systemDate}`;
+      localStorage.setItem(key, JSON.stringify(currentData));
+    }
+
+    function initTokenSelectDropdown() {
+      const select = document.getElementById('member-token-select');
+      const currentVal = select.value;
+      select.innerHTML = '<option value="">-- 公用/全覽模式 (檢視全部) --</option>';
+      
+      currentData.members.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m.seat;
+        opt.textContent = `${m.seat}號 - ${m.name}`;
+        select.appendChild(opt);
+      });
+      select.value = currentVal;
+    }
+
+    function switchMemberToken(val) {
+      currentSelectedTokenSeat = val ? parseInt(val) : null;
+      renderOrderTable();
+      if (currentSelectedTokenSeat) {
+        const m = currentData.members.find(x => x.seat === currentSelectedTokenSeat);
+        showToast(`已切換為：${m.seat}號 ${m.name} 的個人點餐檢視`);
+      } else {
+        showToast("已切換為全覽模式");
+      }
+    }
+
+    function startTimer() {
+      if (timerInterval) clearInterval(timerInterval);
+      updateCountdownStatus();
+      timerInterval = setInterval(updateCountdownStatus, 1000);
+    }
+
+    function updateCountdownStatus() {
+      const deadlineVal = document.getElementById('deadline-time').value;
+      if (!deadlineVal) return;
+
+      const now = new Date();
+      const [hours, minutes] = deadlineVal.split(':').map(Number);
+      const deadlineDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0);
+      const diffSec = Math.floor((deadlineDate - now) / 1000);
+
+      const countdownEl = document.getElementById('countdown-display');
+      const bannerEl = document.getElementById('deadline-banner');
+      const bannerTimerEl = document.getElementById('banner-timer');
+
+      if (diffSec > 1800) {
+        countdownEl.innerText = "--:--:-- (剩餘 >30分)";
+        countdownEl.className = "font-mono font-bold text-slate-500 text-xs sm:text-sm";
+        bannerEl.classList.add('hidden');
+        setFormLock(false);
+      } else if (diffSec > 0 && diffSec <= 1800) {
+        const m = Math.floor(diffSec / 60);
+        const s = diffSec % 60;
+        const timeStr = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+
+        countdownEl.innerText = timeStr;
+        countdownEl.className = "font-mono font-bold text-amber-600 text-sm animate-pulse";
+
+        if (diffSec <= 600) {
+          bannerEl.classList.remove('hidden');
+          bannerTimerEl.innerText = timeStr;
+        } else {
+          bannerEl.classList.add('hidden');
+        }
+        setFormLock(false);
+      } else {
+        countdownEl.innerText = "已截止 (00:00)";
+        countdownEl.className = "font-mono font-bold text-red-600 text-sm";
+        bannerEl.classList.add('hidden');
+        setFormLock(true);
+      }
+    }
+
+    function setFormLock(isTimeLocked) {
+      if (currentRole === 'admin') isTimeLocked = false;
+      const rows = document.querySelectorAll('#order-table-body tr');
+      
+      rows.forEach((tr, idx) => {
+        const m = currentData.members[idx];
+        const inputs = tr.querySelectorAll('input');
+        
+        let canEditThisRow = false;
+        if (currentRole === 'admin') {
+          canEditThisRow = true;
+        } else if (currentSelectedTokenSeat !== null) {
+          if (m.seat === currentSelectedTokenSeat && !isTimeLocked) {
+            canEditThisRow = true;
+          }
+        }
+
+        inputs.forEach(input => {
+          input.disabled = !canEditThisRow;
+          if (!canEditThisRow) {
+            input.classList.add('bg-slate-100', 'cursor-not-allowed', 'text-slate-500');
+            input.classList.remove('bg-slate-50');
+          } else {
+            input.classList.remove('bg-slate-100', 'cursor-not-allowed', 'text-slate-500');
+            if (!input.classList.contains('border-b')) {
+              input.classList.add('bg-slate-50');
+            }
+          }
+        });
+
+        if (currentRole !== 'admin') {
+          const nameInput = tr.querySelector('input[type="text"]');
+          if (nameInput) nameInput.disabled = true;
+        }
+      });
+    }
+
+    function toggleAdminModal() {
+      if (currentRole === 'admin') {
+        if (confirm("要登出主辦人模式並返回一般團員檢視嗎？")) {
+          currentRole = 'user';
+          applyRoleUI();
+          showToast("已切換回 一般團員模式");
+          calculateReconciliation();
+        }
+      } else {
+        openAdminAuthModal();
+      }
+    }
+
+    function openAdminAuthModal() {
+      document.getElementById('admin-pass-input').value = '';
+      document.getElementById('admin-auth-error').classList.add('hidden');
+      document.getElementById('admin-auth-modal').classList.remove('hidden');
+      document.getElementById('admin-pass-input').focus();
+    }
+
+    function closeAdminAuthModal() {
+      document.getElementById('admin-auth-modal').classList.add('hidden');
+    }
+
+    function verifyAdminPassword() {
+      const inputPass = document.getElementById('admin-pass-input').value;
+      const actualPass = currentData.adminPass || DEFAULT_ADMIN_PASS;
+
+      if (inputPass === actualPass) {
+        currentRole = 'admin';
+        closeAdminAuthModal();
+        applyRoleUI();
+        showToast("管理員驗證成功！已啟用主辦人模式");
+        calculateReconciliation();
+      } else {
+        document.getElementById('admin-auth-error').classList.remove('hidden');
+      }
+    }
+
+    function applyRoleUI() {
+      const badge = document.getElementById('role-badge');
+      const adminBtnText = document.getElementById('admin-btn-text');
+      const adminOnlyBtns = document.querySelectorAll('.admin-only');
+
+      if (currentRole === 'admin') {
+        badge.innerText = "主辦人 (Admin 完整權限)";
+        badge.className = "bg-blue-600 text-white font-semibold px-2 py-0.5 rounded text-[11px]";
+        adminBtnText.innerText = "登出管理者";
+        adminOnlyBtns.forEach(btn => btn.classList.remove('hidden'));
+      } else {
+        badge.innerText = "一般檢視/全覽模式";
+        badge.className = "bg-slate-100 text-slate-700 font-semibold px-2 py-0.5 rounded text-[11px]";
+        adminBtnText.innerText = "管理者登入";
+        adminOnlyBtns.forEach(btn => btn.classList.add('hidden'));
+      }
+      updateCountdownStatus();
+    }
+
+    function openMenuUrl() {
+      window.open(currentData.menuUrl || DEFAULT_MENU_URL, '_blank');
+    }
+
+    function renderOrderTable() {
+      const tbody = document.getElementById('order-table-body');
+      tbody.innerHTML = '';
+
+      currentData.members.forEach((m, idx) => {
+        const tr = document.createElement('tr');
+        tr.className = "hover:bg-slate-50/80 transition text-slate-700";
+
+        tr.innerHTML = `
+          <td class="p-3 text-center font-bold text-slate-400 text-xs">${m.seat}</td>
+          <td class="p-3">
+            <input type="text" value="${m.name}" onchange="updateMemberField(${idx}, 'name', this.value)" class="w-full bg-transparent border-b border-transparent focus:border-blue-500 font-medium outline-none py-1">
+          </td>
+          <td class="p-3">
+            <input type="text" value="${m.item}" placeholder="輸入餐點或飲料品項" onchange="updateMemberField(${idx}, 'item', this.value)" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none">
+          </td>
+          <td class="p-3">
+            <input type="text" value="${m.note}" placeholder="例: 正常冰 / 五分熟" onchange="updateMemberField(${idx}, 'note', this.value)" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none">
+          </td>
+          <td class="p-3">
+            <input type="number" value="${m.price || ''}" min="0" placeholder="0" onchange="updateMemberField(${idx}, 'price', parseFloat(this.value)||0)" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-right font-medium focus:ring-2 focus:ring-blue-500 outline-none">
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+      updateCountdownStatus();
+    }
+
+    function updateMemberField(index, field, value) {
+      currentData.members[index][field] = value;
+      saveDataForDate();
+      renderSummaryTable();
+      calculateReconciliation();
+      if (field === 'name') {
+        initTokenSelectDropdown();
+      }
+    }
+
+    function clearAllOrdersConfirm() {
+      if (confirm("確定要清空今日所有點購資料嗎？")) {
+        currentData.members.forEach(m => {
+          m.item = '';
+          m.price = 0;
+          m.note = '';
+          m.paid = false;
+        });
+        saveDataForDate();
+        renderOrderTable();
+        renderSummaryTable();
+        calculateReconciliation();
+        showToast("已清空點餐資料");
+      }
+    }
+
+    // 頁籤二：順序調整為 [座號: X] 品項 x 1 (小計: $XX)
+    function renderSummaryTable() {
+      const tbody = document.getElementById('summary-table-body');
+      tbody.innerHTML = '';
+      const aggMap = {};
+
+      currentData.members.forEach(m => {
+        const hasItem = m.item && m.item.trim() !== '';
+        const hasNote = m.note && m.note.trim() !== '';
+        const hasPrice = (parseFloat(m.price) || 0) > 0;
+
+        if (!hasItem && !hasNote && !hasPrice) return;
+
+        const key = `${(m.item || '').trim()}||${(m.note || '').trim()}`;
+        if (!aggMap[key]) {
+          aggMap[key] = { item: (m.item || '').trim(), note: (m.note || '').trim(), qty: 0, totalAmount: 0, seats: [] };
+        }
+        aggMap[key].qty += 1;
+        aggMap[key].totalAmount += (parseFloat(m.price) || 0);
+        aggMap[key].seats.push(m.seat);
+      });
+
+      let totalQty = 0;
+      let totalAmount = 0;
+      let summaryLines = [];
+
+      Object.values(aggMap).forEach(agg => {
+        totalQty += agg.qty;
+        totalAmount += agg.totalAmount;
+        const noteText = agg.note ? ` (${agg.note})` : '';
+        const seatsStr = `[座號: ${agg.seats.join(',')}]`;
+        
+        // 調整後的文字順序格式：[座號: 2] 糖果 x 1 (小計: $90)
+        summaryLines.write = `${seatsStr} ${agg.item || '(未填品項)'}${noteText} x ${agg.qty} (小計: $${agg.totalAmount})`;
+        summaryLines.push(summaryLines.write);
+
+        const isMissing = !agg.item || agg.item.trim() === "" || agg.qty <= 0 || agg.totalAmount <= 0;
+
+        const tr = document.createElement('tr');
+        tr.className = `transition ${isMissing ? 'bg-slate-100 opacity-60 text-slate-400' : 'hover:bg-slate-50 text-slate-700'}`;
+        
+        tr.innerHTML = `
+          <td class="p-3 text-center font-bold text-xs">${agg.seats.join(', ')}</td>
+          <td class="p-3 font-semibold ${isMissing ? 'text-slate-400 line-through' : 'text-slate-800'}">${agg.item || '(未填品項)'}</td>
+          <td class="p-3">${agg.note || '-'}</td>
+          <td class="p-3 text-center font-bold text-blue-600">${agg.qty}</td>
+          <td class="p-3 text-right font-bold ${isMissing ? 'text-slate-400' : 'text-slate-800'}">$${agg.totalAmount}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      if (Object.keys(aggMap).length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="p-6 text-center text-slate-400">目前尚無點餐資料</td></tr>`;
+      }
+
+      document.getElementById('summary-total-qty').innerText = totalQty;
+      document.getElementById('summary-total-amount').innerText = `$${totalAmount}`;
+
+      const textHeader = `【${systemDate} 團購訂單統計】\n`;
+      const textFooter = `\n總計：${totalQty} 份，總金額：$${totalAmount}`;
+      document.getElementById('summary-text-preview').value = textHeader + (summaryLines.length > 0 ? summaryLines.join('\n') : "無訂餐品項") + textFooter;
+    }
+
+    function copyAggregationsText() {
+      const text = document.getElementById('summary-text-preview').value;
+      if (!text) return;
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      showToast("已複製店家訂單文字至剪貼簿！");
+    }
+
+    function calculateReconciliation() {
+      const deliveryFee = parseFloat(document.getElementById('fee-delivery').value) || 0;
+      const discount = parseFloat(document.getElementById('fee-discount').value) || 0;
+      const splitMode = document.getElementById('split-mode').value;
+
+      currentData.deliveryFee = deliveryFee;
+      currentData.discount = discount;
+      currentData.splitMode = splitMode;
+      saveDataForDate();
+
+      let subtotal = 0;
+      const activeMembers = [];
+      currentData.members.forEach((m, idx) => {
+        const orig = m.price || 0;
+        subtotal += orig;
+        if (orig > 0) activeMembers.push({ index: idx, orig: orig });
+      });
+
+      document.getElementById('calc-subtotal').innerText = `$${subtotal}`;
+      const netExtra = deliveryFee - discount;
+      let calculatedPayables = new Array(currentData.members.length).fill(0);
+      let calculatedSplits = new Array(currentData.members.length).fill(0);
+
+      if (subtotal > 0 && activeMembers.length > 0) {
+        if (splitMode === 'proportional') {
+          let allocatedExtraSum = 0;
+          activeMembers.forEach(item => {
+            const ratio = item.orig / subtotal;
+            const roundedExtra = Math.round(netExtra * ratio);
+            calculatedSplits[item.index] = roundedExtra;
+            calculatedPayables[item.index] = Math.max(0, item.orig + roundedExtra);
+            allocatedExtraSum += roundedExtra;
+          });
+          const roundingDiff = netExtra - allocatedExtraSum;
+          document.getElementById('rounding-diff').innerText = `$${roundingDiff > 0 ? '+' : ''}${roundingDiff}`;
+        } else if (splitMode === 'headcount') {
+          const perHeadExtra = Math.round(netExtra / activeMembers.length);
+          activeMembers.forEach(item => {
+            calculatedSplits[item.index] = perHeadExtra;
+            calculatedPayables[item.index] = Math.max(0, item.orig + perHeadExtra);
+          });
+          document.getElementById('rounding-diff').innerText = `$0`;
+        } else {
+          activeMembers.forEach(item => {
+            calculatedSplits[item.index] = 0;
+            calculatedPayables[item.index] = item.orig;
+          });
+          document.getElementById('rounding-diff').innerText = `$0`;
+        }
+      } else {
+        document.getElementById('rounding-diff').innerText = `$0`;
+      }
+
+      const tbody = document.getElementById('payment-table-body');
+      tbody.innerHTML = '';
+      let grandTotalCollected = 0;
+
+      // 判斷是否為管理者（只有管理者可勾選付款狀態）
+      const isAdmin = (currentRole === 'admin');
+
+      currentData.members.forEach((m, idx) => {
+        const origCost = m.price || 0;
+        const finalPayable = calculatedPayables[idx] || 0;
+        const splitVal = calculatedSplits[idx] || 0;
+        if (origCost > 0) grandTotalCollected += finalPayable;
+
+        const tr = document.createElement('tr');
+        tr.className = "hover:bg-slate-50 transition text-slate-700";
+        tr.innerHTML = `
+          <td class="p-3 text-center font-bold text-slate-400 text-xs">${m.seat}</td>
+          <td class="p-3 font-semibold text-slate-800">${m.name}</td>
+          <td class="p-3 text-right text-slate-600">$${origCost}</td>
+          <td class="p-3 text-right text-xs ${splitVal < 0 ? 'text-emerald-600' : 'text-slate-500'}">
+            ${splitVal > 0 ? '+$' + splitVal : (splitVal < 0 ? '-$' + Math.abs(splitVal) : '$0')}
+          </td>
+          <td class="p-3 text-right font-bold text-blue-600 text-base">$${finalPayable}</td>
+          <td class="p-3 text-center">
+            <label class="inline-flex items-center space-x-2 cursor-pointer">
+              <input type="checkbox" ${m.paid ? 'checked' : ''} ${!isAdmin ? 'disabled' : ''} onchange="togglePaidStatus(${idx}, this.checked)" class="w-5 h-5 text-blue-600 rounded border-slate-300 focus:ring-blue-500 ${!isAdmin ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}">
+              <span class="text-xs font-semibold ${m.paid ? 'text-emerald-600' : 'text-slate-400'}">${m.paid ? '已付款' : '未付款'}</span>
+            </label>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById('calc-grand-total').innerText = `$${grandTotalCollected}`;
+    }
+
+    function togglePaidStatus(idx, isChecked) {
+      if (currentRole !== 'admin') {
+        showToast("權限不足：僅限管理者可勾選付款狀態！");
+        calculateReconciliation(); // 恢復畫面
+        return;
+      }
+      currentData.members[idx].paid = isChecked;
+      saveDataForDate();
+      calculateReconciliation();
+    }
+
+    function exportToExcel() {
+      showToast("正在匯出 Excel 報表...");
+    }
+
+    function switchTab(tabNum) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.querySelectorAll('[id^="tab-btn-"]').forEach(el => el.classList.remove('tab-active'));
+      
+      document.getElementById(`tab-${tabNum}`).classList.remove('hidden');
+      document.getElementById(`tab-btn-${tabNum}`).classList.add('tab-active');
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toast-msg').innerText = msg;
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      setTimeout(() => {
+        toast.classList.add('translate-y-20', 'opacity-0');
+      }, 3000);
+    }
+  </script>
+</body>
+</html>
